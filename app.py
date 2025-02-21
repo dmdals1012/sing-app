@@ -9,7 +9,7 @@ import librosa.display
 import av
 import queue
 import time
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # 디버깅 출력
 st.write("🔹 Streamlit WebRTC 앱 시작")
@@ -44,26 +44,28 @@ if 'recording_state' not in st.session_state:
 audio_buffer = queue.Queue()
 
 # 오디오 프레임 처리
-def audio_receiver(frame: av.AudioFrame):
-    st.write("🔹 오디오 프레임 수신 중...")
+def audio_frame_callback(frame):
     if st.session_state.recording_state == 'recording':
-        sound = np.array(frame.to_ndarray()).flatten().astype(np.float32) / 32768.0
+        sound = frame.to_ndarray().flatten().astype(np.float32) / 32768.0
         audio_buffer.put(sound)
+    return frame
 
 # WebRTC 스트리밍 시작 (설정 변경)
 try:
     webrtc_ctx = webrtc_streamer(
         key="audio-recorder",
-        mode=WebRtcMode.SENDRECV,  # SENDONLY 대신 SENDRECV 사용
-        media_stream_constraints={"video": False, "audio": True}
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTCConfiguration(
+            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+        ),
+        media_stream_constraints={"video": False, "audio": True},
+        audio_frame_callback=audio_frame_callback
     )
     st.write("✅ WebRTC 스트리밍 시작")
-except TypeError as e:
-    st.error(f"❌ WebRTC 설정 오류: {e}")
 except Exception as e:
     st.error(f"❌ WebRTC 초기화 실패: {e}")
 
-if webrtc_ctx and webrtc_ctx.state.playing:
+if webrtc_ctx.state.playing:
     if st.session_state.recording_state == 'stopped':
         st.session_state.recording_state = 'recording'
         st.write("녹음 중... 5초 동안 노래를 부르세요.")
