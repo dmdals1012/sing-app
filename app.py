@@ -11,15 +11,27 @@ import queue
 import time
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
+# 디버깅 출력
+st.write("🔹 Streamlit WebRTC 앱 시작")
+
 # 모델 로드
 @st.cache_resource
 def load_model():
+    st.write("✅ 모델 로드 중...")
     return keras.models.load_model('vocal_range_classifier.h5')
 
-model = load_model()
+try:
+    model = load_model()
+    st.write("✅ 모델 로드 완료")
+except Exception as e:
+    st.error(f"❌ 모델 로드 실패: {e}")
 
 # 레이블 인코더 로드
-label_encoder = joblib.load('label_encoder.pkl')
+try:
+    label_encoder = joblib.load('label_encoder.pkl')
+    st.write("✅ 레이블 인코더 로드 완료")
+except Exception as e:
+    st.error(f"❌ 레이블 인코더 로드 실패: {e}")
 
 st.title('실시간 음역대 분류기')
 
@@ -33,27 +45,23 @@ audio_buffer = queue.Queue()
 
 # 오디오 프레임 처리
 def audio_receiver(frame: av.AudioFrame):
+    st.write("🔹 오디오 프레임 수신 중...")
     if st.session_state.recording_state == 'recording':
         sound = np.array(frame.to_ndarray()).flatten().astype(np.float32) / 32768.0
         audio_buffer.put(sound)
 
-# WebRTC 스트리밍
-webrtc_ctx = webrtc_streamer(
-    key="audio-recorder",
-    mode=WebRtcMode.SENDRECV,  # 변경 가능 (SENDONLY → SENDRECV)
-    rtc_configuration={
-        "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
-            {
-                "urls": ["turn:numb.viagenie.ca"],
-                "username": "webrtc@live.com",
-                "credential": "muazkh"
-            }
-        ]
-    },
-    media_stream_constraints={"video": False, "audio": True},
-    on_audio_frame=audio_receiver,
-)
+# WebRTC 스트리밍 시작 (설정 변경)
+try:
+    webrtc_ctx = webrtc_streamer(
+        key="audio-recorder",
+        mode=WebRtcMode.SENDRECV,  # SENDONLY 대신 SENDRECV 사용
+        media_stream_constraints={"video": False, "audio": True}
+    )
+    st.write("✅ WebRTC 스트리밍 시작")
+except TypeError as e:
+    st.error(f"❌ WebRTC 설정 오류: {e}")
+except Exception as e:
+    st.error(f"❌ WebRTC 초기화 실패: {e}")
 
 if webrtc_ctx and webrtc_ctx.state.playing:
     if st.session_state.recording_state == 'stopped':
@@ -62,7 +70,7 @@ if webrtc_ctx and webrtc_ctx.state.playing:
         start_time = time.time()
         audio_frames = []
         
-        while time.time() - start_time < 5:  # 5초 동안 녹음
+        while time.time() - start_time < 5:
             try:
                 audio_frame = audio_buffer.get(timeout=0.1)
                 audio_frames.append(audio_frame)
@@ -79,7 +87,6 @@ if webrtc_ctx and webrtc_ctx.state.playing:
 if st.session_state.audio_data is not None:
     audio_data = st.session_state.audio_data
     
-    # 특징 추출
     def extract_features(audio, sr):
         mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=40)
         return np.mean(mfcc.T, axis=0)
@@ -87,7 +94,6 @@ if st.session_state.audio_data is not None:
     features = extract_features(audio_data, sr=48000)
     features = features.reshape(1, -1)
     
-    # 예측
     try:
         prediction = model.predict(features)
         predicted_label = np.argmax(prediction, axis=1)
@@ -96,7 +102,6 @@ if st.session_state.audio_data is not None:
     except Exception as e:
         st.error(f"예측 중 오류 발생: {str(e)}")
     
-    # MFCC 스펙트로그램 표시
     st.write("MFCC 스펙트로그램:")
     fig, ax = plt.subplots()
     mfcc = librosa.feature.mfcc(y=audio_data, sr=48000, n_mfcc=40)
@@ -104,7 +109,6 @@ if st.session_state.audio_data is not None:
     plt.colorbar()
     st.pyplot(fig)
     
-    # 분석 완료 후 상태 초기화
     st.session_state.audio_data = None
 
-st.write("사용 방법: 'START' 버튼을 클릭하고 5초 동안 노래를 부르세요. 녹음이 자동으로 종료되고 분석 결과가 표시됩니다.")
+st.write("사용 방법: 'START' 버튼을 클릭하고 5초 동안 노래를 부르세요.")
