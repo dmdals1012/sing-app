@@ -6,11 +6,10 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
 import librosa.display
-import io
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import av
 import queue
 import time
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 # 모델 로드
 @st.cache_resource
@@ -32,21 +31,16 @@ if 'recording_state' not in st.session_state:
 
 audio_buffer = queue.Queue()
 
-def extract_features(audio, sr):
-    mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=40)
-    mfcc = np.mean(mfcc.T, axis=0)  # 평균값으로 고정된 크기의 벡터 생성
-    return mfcc
-
 # 오디오 프레임 처리
-
 def audio_receiver(frame: av.AudioFrame):
     if st.session_state.recording_state == 'recording':
         sound = np.array(frame.to_ndarray()).flatten().astype(np.float32) / 32768.0
         audio_buffer.put(sound)
 
+# WebRTC 스트리밍
 webrtc_ctx = webrtc_streamer(
     key="audio-recorder",
-    mode=WebRtcMode.SENDONLY,
+    mode=WebRtcMode.SENDRECV,  # 변경 가능 (SENDONLY → SENDRECV)
     rtc_configuration={
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
@@ -86,6 +80,10 @@ if st.session_state.audio_data is not None:
     audio_data = st.session_state.audio_data
     
     # 특징 추출
+    def extract_features(audio, sr):
+        mfcc = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=40)
+        return np.mean(mfcc.T, axis=0)
+
     features = extract_features(audio_data, sr=48000)
     features = features.reshape(1, -1)
     
