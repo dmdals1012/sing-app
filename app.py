@@ -51,7 +51,7 @@ def audio_receiver(frame):
         audio_buffer.put(sound)
 
 webrtc_ctx = webrtc_streamer(
-    key="example",
+    key="speech-to-text",
     mode=WebRtcMode.SENDONLY,
     audio_receiver_size=1024,
     rtc_configuration={
