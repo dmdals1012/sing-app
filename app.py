@@ -9,14 +9,14 @@ import tempfile
 # 모델 로드
 @st.cache_resource
 def load_model():
-    model = joblib.load('vocal_range_classifier.pkl')
+    model = joblib.load('./vocal_range_classifier.pkl')
     return model
 
 
 model = load_model()
 
 # 레이블 인코더 로드 (저장했다고 가정)
-label_encoder = joblib.load('label_encoder.pkl')
+label_encoder = joblib.load('./label_encoder.pkl')
 
 st.title('실시간 음역대 분류기')
 
