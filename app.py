@@ -9,6 +9,7 @@ import librosa.display
 import av
 import queue
 import time
+import asyncio
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # 디버깅 출력
@@ -41,14 +42,34 @@ if 'audio_data' not in st.session_state:
 if 'recording_state' not in st.session_state:
     st.session_state.recording_state = 'stopped'
 
-audio_buffer = queue.Queue()
+audio_buffer = asyncio.Queue()
 
 # 오디오 프레임 처리
-def audio_frame_callback(frame):
+async def audio_frame_callback(frame):
     if st.session_state.recording_state == 'recording':
         sound = frame.to_ndarray().flatten().astype(np.float32) / 32768.0
-        audio_buffer.put(sound)
+        await audio_buffer.put(sound)
     return frame
+
+# 비동기 녹음 함수
+async def record_audio():
+    st.write("녹음 중... 5초 동안 노래를 부르세요.")
+    start_time = time.time()
+    audio_frames = []
+    
+    while time.time() - start_time < 5:
+        try:
+            audio_frame = await asyncio.wait_for(audio_buffer.get(), timeout=0.1)
+            audio_frames.append(audio_frame)
+        except asyncio.TimeoutError:
+            continue
+    
+    if audio_frames:
+        st.session_state.audio_data = np.concatenate(audio_frames, axis=0)
+    else:
+        st.error("녹음된 오디오가 없습니다. 마이크 권한을 확인하고 다시 시도해주세요.")
+    
+    st.session_state.recording_state = 'stopped'
 
 # WebRTC 스트리밍 시작 (설정 변경)
 try:
@@ -59,6 +80,7 @@ try:
             {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
         ),
         media_stream_constraints={"video": False, "audio": True},
+        async_processing=True,
         audio_frame_callback=audio_frame_callback
     )
     st.write("✅ WebRTC 스트리밍 시작")
@@ -68,23 +90,7 @@ except Exception as e:
 if webrtc_ctx.state.playing:
     if st.session_state.recording_state == 'stopped':
         st.session_state.recording_state = 'recording'
-        st.write("녹음 중... 5초 동안 노래를 부르세요.")
-        start_time = time.time()
-        audio_frames = []
-        
-        while time.time() - start_time < 5:
-            try:
-                audio_frame = audio_buffer.get(timeout=0.1)
-                audio_frames.append(audio_frame)
-            except queue.Empty:
-                continue
-        
-        st.session_state.recording_state = 'stopped'
-        
-        if audio_frames:
-            st.session_state.audio_data = np.concatenate(audio_frames, axis=0)
-        else:
-            st.error("녹음된 오디오가 없습니다. 마이크 권한을 확인하고 다시 시도해주세요.")
+        asyncio.run(record_audio())
 
 if st.session_state.audio_data is not None:
     audio_data = st.session_state.audio_data
