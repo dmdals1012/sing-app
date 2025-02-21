@@ -5,12 +5,13 @@ import joblib
 import sounddevice as sd
 import scipy.io.wavfile as wav
 import tempfile
+import matplotlib.pyplot as plt
+from tensorflow import load_model
 
 # 모델 로드
 @st.cache_resource
 def load_model():
-    model = joblib.load('vocal_range_classifier.pkl')
-    return model
+    return load_model('vocal_range_classifier.keras')
 
 
 model = load_model()
