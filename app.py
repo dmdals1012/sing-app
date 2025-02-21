@@ -51,10 +51,12 @@ def audio_receiver(frame):
         audio_buffer.put(sound)
 
 webrtc_ctx = webrtc_streamer(
-    key="speech-to-text",
+    key="example",
     mode=WebRtcMode.SENDONLY,
     audio_receiver_size=1024,
-    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    rtc_configuration={
+        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    },
     media_stream_constraints={"video": False, "audio": True},
     on_audio_frame=audio_receiver,
 )
