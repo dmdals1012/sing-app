@@ -51,10 +51,19 @@ def audio_receiver(frame):
         audio_buffer.put(sound)
 
 webrtc_ctx = webrtc_streamer(
-    key="speech-to-text",
+    key="audio-recorder",
     mode=WebRtcMode.SENDONLY,
     audio_receiver_size=1024,
-    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    rtc_configuration={
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {
+                "urls": ["turn:numb.viagenie.ca"],
+                "username": "webrtc@live.com",
+                "credential": "muazkh"
+            }
+        ]
+    },
     media_stream_constraints={"video": False, "audio": True},
     on_audio_frame=audio_receiver,
 )
@@ -73,7 +82,10 @@ if webrtc_ctx.state.playing and st.session_state.recording_state == 'stopped':
             continue
     
     st.session_state.recording_state = 'stopped'
-    st.session_state.audio_data = np.concatenate(audio_frames, axis=0)
+    if audio_frames:
+        st.session_state.audio_data = np.concatenate(audio_frames, axis=0)
+    else:
+        st.error("녹음된 오디오가 없습니다. 마이크 권한을 확인하고 다시 시도해주세요.")
     st.experimental_rerun()
 
 if st.session_state.audio_data is not None:
