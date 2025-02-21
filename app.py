@@ -6,7 +6,7 @@ import sounddevice as sd
 import scipy.io.wavfile as wav
 import tempfile
 import matplotlib.pyplot as plt
-from tensorflow import load_model
+from tensorflow.keras.models import load_model
 
 # 모델 로드
 @st.cache_resource
