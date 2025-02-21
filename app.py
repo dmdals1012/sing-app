@@ -10,6 +10,7 @@ import io
 from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import av
 import queue
+import time
 
 # 모델 로드
 @st.cache_resource
@@ -22,6 +23,12 @@ model = load_model()
 label_encoder = joblib.load('label_encoder.pkl')
 
 st.title('실시간 음역대 분류기')
+
+# 세션 상태 초기화
+if 'audio_data' not in st.session_state:
+    st.session_state.audio_data = None
+if 'recording_state' not in st.session_state:
+    st.session_state.recording_state = 'stopped'
 
 # 음성 특징 추출
 def extract_features(audio, sr):
@@ -39,8 +46,9 @@ def process_audio(frame):
 audio_buffer = queue.Queue()
 
 def audio_receiver(frame):
-    sound = process_audio(frame)
-    audio_buffer.put(sound)
+    if st.session_state.recording_state == 'recording':
+        sound = process_audio(frame)
+        audio_buffer.put(sound)
 
 webrtc_ctx = webrtc_streamer(
     key="speech-to-text",
@@ -48,40 +56,51 @@ webrtc_ctx = webrtc_streamer(
     audio_receiver_size=1024,
     rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
     media_stream_constraints={"video": False, "audio": True},
+    on_audio_frame=audio_receiver,
 )
 
-if webrtc_ctx.state.playing:
+if webrtc_ctx.state.playing and st.session_state.recording_state == 'stopped':
+    st.session_state.recording_state = 'recording'
     st.write("녹음 중... 5초 동안 노래를 부르세요.")
+    start_time = time.time()
     audio_frames = []
-    for _ in range(5 * 48):  # 5초 동안 녹음 (48kHz 샘플링 레이트 가정)
+    
+    while time.time() - start_time < 5:  # 5초 동안 녹음
         try:
-            audio_frame = audio_buffer.get(timeout=1.0)
+            audio_frame = audio_buffer.get(timeout=0.1)
             audio_frames.append(audio_frame)
         except queue.Empty:
-            break
+            continue
     
-    if len(audio_frames) > 0:
-        audio_data = np.concatenate(audio_frames, axis=0)
-        
-        # 특징 추출
-        features = extract_features(audio_data, sr=48000)
-        features = features.reshape(1, -1)  # 모델 입력 형태 맞춤
-        
-        # 예측
-        try:
-            prediction = model.predict(features)
-            predicted_label = np.argmax(prediction, axis=1)  # 가장 높은 확률의 클래스를 선택
-            voice_type = label_encoder.inverse_transform(predicted_label)[0]
-            st.write(f"예측된 음역대: {voice_type}")
-        except Exception as e:
-            st.error(f"예측 중 오류 발생: {str(e)}")
+    st.session_state.recording_state = 'stopped'
+    st.session_state.audio_data = np.concatenate(audio_frames, axis=0)
+    st.experimental_rerun()
 
-        # MFCC 스펙트로그램 표시
-        st.write("MFCC 스펙트로그램:")
-        fig, ax = plt.subplots()
-        mfcc = librosa.feature.mfcc(y=audio_data, sr=48000, n_mfcc=40)
-        librosa.display.specshow(mfcc, sr=48000, x_axis='time', ax=ax)
-        plt.colorbar()
-        st.pyplot(fig)
+if st.session_state.audio_data is not None:
+    audio_data = st.session_state.audio_data
+    
+    # 특징 추출
+    features = extract_features(audio_data, sr=48000)
+    features = features.reshape(1, -1)  # 모델 입력 형태 맞춤
+    
+    # 예측
+    try:
+        prediction = model.predict(features)
+        predicted_label = np.argmax(prediction, axis=1)  # 가장 높은 확률의 클래스를 선택
+        voice_type = label_encoder.inverse_transform(predicted_label)[0]
+        st.write(f"예측된 음역대: {voice_type}")
+    except Exception as e:
+        st.error(f"예측 중 오류 발생: {str(e)}")
 
-st.write("사용 방법: 'START' 버튼을 클릭하고 5초 동안 노래를 부르세요. 그 후 'STOP' 버튼을 클릭하세요.")
+    # MFCC 스펙트로그램 표시
+    st.write("MFCC 스펙트로그램:")
+    fig, ax = plt.subplots()
+    mfcc = librosa.feature.mfcc(y=audio_data, sr=48000, n_mfcc=40)
+    librosa.display.specshow(mfcc, sr=48000, x_axis='time', ax=ax)
+    plt.colorbar()
+    st.pyplot(fig)
+    
+    # 분석 완료 후 상태 초기화
+    st.session_state.audio_data = None
+
+st.write("사용 방법: 'START' 버튼을 클릭하고 5초 동안 노래를 부르세요. 녹음이 자동으로 종료되고 분석 결과가 표시됩니다.")
